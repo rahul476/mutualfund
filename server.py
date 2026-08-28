@@ -3,8 +3,8 @@
 CAM Statement Web Application Server
 
 Serves the interactive web interface and provides REST API endpoints for
-image upload, OCR extraction, categorization, analytics summary, custom target goal CRUD,
-and CSV export.
+in-memory image upload, OCR extraction, categorization, analytics summary,
+custom target goal CRUD, and CSV export.
 
 Usage:
     python server.py [port]
@@ -24,8 +24,6 @@ import pandas as pd
 from cam_extractor import extract_all, clean_dataframe, deduplicate, OUTPUT_COLUMNS
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5050
-UPLOAD_DIR = Path("tmp/uploads").resolve()
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR = Path("output").resolve()
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 GOALS_FILE = Path("target_goals.json").resolve()
@@ -101,10 +99,10 @@ def save_target_goals(goals: list) -> bool:
         return False
 
 
-def parse_multipart_files(body: bytes, boundary: bytes) -> list:
-    """Parse multipart/form-data files from request body."""
+def parse_multipart_files_in_memory(body: bytes, boundary: bytes) -> list:
+    """Parse multipart/form-data files directly into in-memory bytes tuples (filename, content_bytes)."""
     parts = body.split(b"--" + boundary)
-    saved_files = []
+    in_memory_files = []
     
     for part in parts:
         if not part or part == b"--\r\n" or part == b"--":
@@ -122,12 +120,9 @@ def parse_multipart_files(body: bytes, boundary: bytes) -> list:
         if fn_match and content:
             filename = Path(fn_match.group(1)).name
             if filename:
-                save_path = UPLOAD_DIR / filename
-                with open(save_path, "wb") as f:
-                    f.write(content)
-                saved_files.append(str(save_path))
+                in_memory_files.append((filename, content))
                 
-    return saved_files
+    return in_memory_files
 
 
 def calculate_analytics(df: pd.DataFrame) -> dict:
@@ -279,18 +274,18 @@ class CAMServerHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
             
-            saved_files = parse_multipart_files(body, boundary)
-            if not saved_files:
+            in_memory_files = parse_multipart_files_in_memory(body, boundary)
+            if not in_memory_files:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "error": "No valid image files uploaded"}).encode("utf-8"))
                 return
                 
-            print(f"🔎 Server processing {len(saved_files)} uploaded image(s)...")
+            print(f"🔎 Server processing {len(in_memory_files)} uploaded image(s) completely IN-MEMORY...")
             
             try:
-                df = extract_all(saved_files)
+                df = extract_all(in_memory_files)
                 df = clean_dataframe(df)
                 df = deduplicate(df)
                 

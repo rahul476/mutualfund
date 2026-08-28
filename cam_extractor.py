@@ -203,7 +203,7 @@ def clean_and_categorize_scheme(scheme_str: str, current_isin: str = "") -> dict
     return {
         "ISIN": isin,
         "Scheme Code": scheme_code,
-        "Clean Scheme Name": clean_name,
+        "Clean Scheme Name": clean_name if clean_name else scheme_str,
         "Fund House": fund_house,
         "Category": category,
         "Plan": plan,
@@ -211,22 +211,16 @@ def clean_and_categorize_scheme(scheme_str: str, current_isin: str = "") -> dict
     }
 
 
-def parse_row_words(row_words: list) -> dict:
-    """
-    Parse a single visual line of OCR words using right-to-left semantic token matching.
-    """
-    line_text = " ".join(w["text"] for w in row_words).strip()
-    line_text = re.sub(r",\s+(\d)", r",\1", line_text)
-    
-    date_match = re.search(r"\b(\d{1,2}-[A-Za-z]{3}-\d{4})\b", line_text)
+def parse_cam_line(line_text: str) -> dict:
+    """Parse a single OCR text line into candidate holding fields."""
+    date_match = re.search(r"(\b\d{1,2}[-/\s][A-Za-z]{3}[-/\s]\d{4}\b)", line_text)
     if not date_match:
-        return None
-    
+        return {}
+
     nav_date = date_match.group(1)
-    date_start_idx = date_match.start()
     date_end_idx = date_match.end()
-    
-    left_part = line_text[:date_start_idx].strip()
+
+    left_part = line_text[:date_match.start()].strip()
     right_part = line_text[date_end_idx:].strip()
     
     registrar = ""
@@ -320,11 +314,19 @@ def parse_row_words(row_words: list) -> dict:
     }
 
 
-def extract_from_image(image_path: str) -> pd.DataFrame:
-    """Extract CAM holdings from a single image using semantic row parsing."""
-    img = cv2.imread(image_path)
+def extract_from_image(image_input) -> pd.DataFrame:
+    """Extract CAM holdings from a single image (file path, bytes, or NumPy ndarray)."""
+    if isinstance(image_input, (str, Path)):
+        img = cv2.imread(str(image_input))
+    elif isinstance(image_input, bytes):
+        img = cv2.imdecode(np.frombuffer(image_input, np.uint8), cv2.IMREAD_COLOR)
+    elif isinstance(image_input, np.ndarray):
+        img = image_input
+    else:
+        img = None
+
     if img is None:
-        print(f"  ⚠  Could not read image: {image_path}")
+        print("  ⚠  Could not read image input")
         return pd.DataFrame(columns=OUTPUT_COLUMNS)
 
     processed = preprocess_image(img)
@@ -347,61 +349,68 @@ def extract_from_image(image_path: str) -> pd.DataFrame:
             })
             
     if not words:
-        print(f"  ⚠  No text detected in: {image_path}")
+        print("  ⚠  No text detected in image input")
         return pd.DataFrame(columns=OUTPUT_COLUMNS)
-
-    words.sort(key=lambda w: w["y_centre"])
-    rows = []
-    current_row = [words[0]]
-    for w in words[1:]:
-        avg_h = np.mean([ww["h"] for ww in current_row])
-        if abs(w["y_centre"] - np.mean([ww["y_centre"] for ww in current_row])) < avg_h * 0.5:
-            current_row.append(w)
-        else:
-            current_row.sort(key=lambda ww: ww["x"])
-            rows.append(current_row)
-            current_row = [w]
-    if current_row:
-        current_row.sort(key=lambda ww: ww["x"])
-        rows.append(current_row)
-    rows.sort(key=lambda r: np.mean([w["y_centre"] for w in r]))
+        
+    y_threshold = 12
+    words.sort(key=lambda w: w["y"])
     
+    lines = []
+    current_line = []
+    current_y = None
+    
+    for word in words:
+        if current_y is None or abs(word["y_centre"] - current_y) <= y_threshold:
+            current_line.append(word)
+            current_y = sum(w["y_centre"] for w in current_line) / len(current_line)
+        else:
+            current_line.sort(key=lambda w: w["x"])
+            lines.append(current_line)
+            current_line = [word]
+            current_y = word["y_centre"]
+            
+    if current_line:
+        current_line.sort(key=lambda w: w["x"])
+        lines.append(current_line)
+        
     records = []
     pending_folio = ""
     pending_isin = ""
     
-    for r in rows:
-        parsed = parse_row_words(r)
+    for line in lines:
+        line_text = " ".join(w["text"] for w in line).strip()
+        parsed = parse_cam_line(line_text)
+        
         if parsed:
-            if pending_folio and not parsed["Folio No."]:
+            if not parsed["Folio No."] and pending_folio:
                 parsed["Folio No."] = pending_folio
                 pending_folio = ""
-            if pending_isin and not parsed["ISIN"]:
+            if not parsed["ISIN"] and pending_isin:
                 parsed["ISIN"] = pending_isin
                 pending_isin = ""
             records.append(parsed)
         else:
-            line_text = " ".join(w["text"] for w in r).strip()
-            if not re.search(r"\btotal\b", line_text, re.IGNORECASE) and not re.search(r"\bfolio\b", line_text, re.IGNORECASE):
-                concat_match = re.search(r"(\d{6,12}(?:/\d+)?)/([0O1lI]?1?NF[A-Z0-9O]{9})", line_text, re.IGNORECASE)
-                isin_m = re.search(r"\b([0O1lI]?1?NF[A-Z0-9O]{9})\b", line_text, re.IGNORECASE)
+            if records:
+                isin_m = re.search(r"([0O1lI]?1?NF[A-Z0-9O]{9})", line_text, re.IGNORECASE)
                 fol_m = re.search(r"(\b\d{6,12}(?:/\d+)?\b)", line_text)
+                concat_match = re.search(r"(\d{6,12}(?:/\d+)?)/([0O1lI]?1?NF[A-Z0-9O]{9})", line_text, re.IGNORECASE)
                 
-                if records:
-                    if not records[-1]["Folio No."] or not records[-1]["ISIN"]:
-                        if concat_match:
-                            if not records[-1]["Folio No."]:
-                                records[-1]["Folio No."] = concat_match.group(1)
-                            if not records[-1]["ISIN"]:
-                                records[-1]["ISIN"] = clean_isin(concat_match.group(2))
-                            line_text = line_text[concat_match.end():].strip()
-                        else:
-                            if isin_m and not records[-1]["ISIN"]:
-                                records[-1]["ISIN"] = clean_isin(isin_m.group(1))
-                                line_text = line_text.replace(isin_m.group(0), "", 1)
-                            if fol_m and not records[-1]["Folio No."]:
-                                records[-1]["Folio No."] = fol_m.group(1)
-                                line_text = line_text.replace(fol_m.group(0), "", 1)
+                is_pure_metadata = bool(concat_match or (fol_m and isin_m) or (fol_m and len(line_text.split()) <= 3))
+                
+                if not is_pure_metadata:
+                    if concat_match:
+                        if not records[-1]["Folio No."]:
+                            records[-1]["Folio No."] = concat_match.group(1)
+                        if not records[-1]["ISIN"]:
+                            records[-1]["ISIN"] = clean_isin(concat_match.group(2))
+                        line_text = line_text.replace(concat_match.group(0), "", 1)
+                    else:
+                        if isin_m and not records[-1]["ISIN"]:
+                            records[-1]["ISIN"] = clean_isin(isin_m.group(1))
+                            line_text = line_text.replace(isin_m.group(0), "", 1)
+                        if fol_m and not records[-1]["Folio No."]:
+                            records[-1]["Folio No."] = fol_m.group(1)
+                            line_text = line_text.replace(fol_m.group(0), "", 1)
                     records[-1]["Scheme Name"] = (records[-1]["Scheme Name"] + " " + line_text).strip()
                 else:
                     if concat_match:
@@ -431,14 +440,26 @@ def find_images(paths: list) -> list:
     return [str(f) for f in sorted(set(image_files))]
 
 
-def extract_all(image_paths: list) -> pd.DataFrame:
+def extract_all(image_inputs: list) -> pd.DataFrame:
+    """
+    Extract holdings from a list of image inputs.
+    Each item in image_inputs can be a file path string OR a tuple (filename, bytes).
+    """
     all_dfs = []
 
-    for idx, img_path in enumerate(image_paths, 1):
-        print(f"\n📄 [{idx}/{len(image_paths)}] Processing: {Path(img_path).name}")
-        df = extract_from_image(img_path)
+    for idx, item in enumerate(image_inputs, 1):
+        if isinstance(item, tuple):
+            name, img_bytes = item
+            print(f"\n📄 [{idx}/{len(image_inputs)}] Processing in-memory image: {name}")
+            df = extract_from_image(img_bytes)
+            source_name = name
+        else:
+            print(f"\n📄 [{idx}/{len(image_inputs)}] Processing file: {Path(item).name}")
+            df = extract_from_image(item)
+            source_name = Path(item).name
+
         if not df.empty:
-            df["Source File"] = Path(img_path).name
+            df["Source File"] = source_name
             all_dfs.append(df)
 
     if not all_dfs:
