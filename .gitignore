@@ -1,0 +1,33 @@
+# Python Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Temporary Uploads & Server Cache
+tmp/
+tmp/uploads/
+
+# Generated Output Data & Reports
+output/
+
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.swp
+*.swo

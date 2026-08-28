@@ -1,0 +1,61 @@
+[
+  {
+    "key": "parag_parikh",
+    "name": "Parag Parikh Flexi Cap Fund",
+    "category": "Equity: Flexi Cap",
+    "targetPct": 35.0,
+    "keywords": [
+      "parag parikh flexi"
+    ]
+  },
+  {
+    "key": "icici_opp",
+    "name": "ICICI Pru India Opp Fund",
+    "category": "Equity: Sectoral / Thematic",
+    "targetPct": 20.0,
+    "keywords": [
+      "icici prudential india opportunities",
+      "icici pru india opp"
+    ]
+  },
+  {
+    "key": "hdfc_midcap",
+    "name": "HDFC Midcap Fund",
+    "category": "Equity: Mid Cap",
+    "targetPct": 20.0,
+    "keywords": [
+      "hdfc mid cap",
+      "hdfc midcap"
+    ]
+  },
+  {
+    "key": "quant_smallcap",
+    "name": "Quant Small Cap Fund",
+    "category": "Equity: Small Cap",
+    "targetPct": 15.0,
+    "keywords": [
+      "quant small cap",
+      "quant smallcap"
+    ]
+  },
+  {
+    "key": "icici_gold",
+    "name": "ICICI Pru Gold ETF FOF",
+    "category": "Commodity: Gold",
+    "targetPct": 5.0,
+    "keywords": [
+      "icici prudential gold",
+      "icici pru gold"
+    ]
+  },
+  {
+    "key": "icici_silver",
+    "name": "ICICI Pru Silver ETF FOF",
+    "category": "Commodity: Silver",
+    "targetPct": 5.0,
+    "keywords": [
+      "icici prudential silver",
+      "icici pru silver"
+    ]
+  }
+]
