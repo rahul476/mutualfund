@@ -64,6 +64,39 @@
           <div class="spinner"></div>
           <span id="loadingText">Processing images via OCR and categorizing schemes...</span>
         </div>
+
+        <!-- How to Download CAS PDF Guide -->
+        <div class="cas-guide-box" style="margin-top: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-glass); border-radius: 12px; padding: 0.9rem 1.2rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleCasGuide()">
+            <span style="font-size: 0.9rem; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem;">
+              <span>❓ How to download your official CAMS / KFintech CAS PDF statement?</span>
+            </span>
+            <span id="casGuideChevron" style="font-size: 0.8rem; color: var(--text-muted); transition: transform 0.2s;">▼</span>
+          </div>
+
+          <div id="casGuideContent" style="display: none; margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+            <ol style="margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.4rem;">
+              <li>
+                <strong>Visit CAMS or KFintech Portal:</strong> Go to 
+                <a href="https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement" target="_blank" style="color: #38bdf8; text-decoration: underline;">CAMS CAS Portal</a> 
+                or 
+                <a href="https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement" target="_blank" style="color: #38bdf8; text-decoration: underline;">KFintech CAS Portal</a>.
+              </li>
+              <li>
+                <strong>Select Statement Type:</strong> Choose <strong>Summary CAS</strong> (Consolidated Account Summary).
+              </li>
+              <li>
+                <strong>Enter Registered Details:</strong> Provide your registered Email ID and PAN number. Select your desired date range.
+              </li>
+              <li>
+                <strong>Check your Email:</strong> CAMS / KFintech will email the password-protected PDF statement to your inbox within minutes.
+              </li>
+              <li>
+                <strong>Upload & Extract:</strong> Drag & drop the downloaded PDF statement into this web app. When prompted, enter your password (usually your <strong>PAN in UPPERCASE</strong> or <strong>DOB in DDMMYYYY</strong> format).
+              </li>
+            </ol>
+          </div>
+        </div>
       </div>
     </section>
 

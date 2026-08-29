@@ -25,7 +25,14 @@ An end-to-end mutual fund Consolidated Account Statement (CAM) extraction system
     - `Hybrid: Arbitrage`
     - `Commodity: Gold`, `Commodity: Silver`
 
-## Quick Start
+## How to Download Official CAMS / KFintech CAS PDF
+
+1. **Visit Official Portals**:
+   - [CAMS CAS Portal](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement)
+   - [KFintech CAS Portal](https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement)
+2. **Select Statement Type**: Choose **Summary CAS** (Consolidated Account Summary).
+3. **Enter Details**: Provide your registered Email ID, PAN, and date range.
+4. **Download & Extract**: Check your email for the password-protected PDF statement, then drag & drop it into the Web App or pass it to `cam_extractor.py -p YOUR_PAN`.
 
 ### 1. Launch Web Application
 

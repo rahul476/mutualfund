@@ -965,3 +965,13 @@ async function clearAllData() {
     alert('Network error connecting to server.');
   }
 }
+
+// Toggle CAS Download Guide Box
+function toggleCasGuide() {
+  const content = document.getElementById('casGuideContent');
+  const chevron = document.getElementById('casGuideChevron');
+  if (!content) return;
+  const isHidden = content.style.display === 'none';
+  content.style.display = isHidden ? 'block' : 'none';
+  if (chevron) chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+}
