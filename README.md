@@ -1,71 +1,26 @@
-# 📊 Mutual Fund CAM Statement Extractor & Web Analytics Dashboard
+# 📊 Mutual Fund CAS Statement Extractor & Analytics Dashboard
 
-An end-to-end mutual fund Consolidated Account Statement (CAM) extraction system featuring high-accuracy OCR image scraping, scheme cleaning, asset categorization, and a modern web dashboard.
+Extract mutual fund Consolidated Account Statements (CAS PDFs or screenshot images) into clean CSV data, categorized analytics, and an interactive web dashboard.
 
-![Web App Preview](output/cam_holdings.csv)
-
-## Features
-
-- **Web Dashboard**:
-  - **Drag & Drop Upload**: Upload multi-page CAM statement screenshots (`.png`, `.jpg`, `.jpeg`, `.webp`).
-  - **Portfolio Metrics**: Real-time Total Valuation, Investment Cost, Unrealized Profit/Loss (INR & %), and Holdings Count.
-  - **Asset Allocation Analytics**: Interactive Chart.js Donut & Bar charts breaking down holdings by **Category** and **Registrar / RTA**.
-  - **Interactive Data Table**: Search bar, category filter pills, dynamic column sorting, and instant **Export CSV Report**.
-- **OCR Extraction Pipeline**:
-  - Contrast-Limited Adaptive Histogram Equalization (CLAHE) pre-processing via OpenCV.
-  - Tesseract OCR word bounding-box extraction (`pytesseract`).
-  - Semantic right-to-left line token parsing.
-- **Scheme Name Cleaning & Categorization (`clean_and_categorize_scheme`)**:
-  - Extracts embedded ISIN codes and removes OCR prefix noise.
-  - Isolates **Scheme Code** (e.g. `117TSD1G`, `PP001ZG`).
-  - Generates clean, human-readable **Scheme Name**.
-  - Identifies **Plan** (`Direct` / `Regular`) and **Option** (`Growth` / `IDCW`).
-  - Automatically classifies funds into **Categories**:
-    - `Equity: Small Cap`, `Equity: Mid Cap`, `Equity: Large & Mid Cap`, `Equity: Flexi Cap`, `Equity: ELSS (Tax Saver)`, `Equity: Index`, `Equity: International`, `Equity: Sectoral / Thematic`
-    - `Hybrid: Arbitrage`
-    - `Commodity: Gold`, `Commodity: Silver`
-
-## How to Download Official CAMS / KFintech CAS PDF
-
-1. **Visit Official Portals**:
-   - [CAMS CAS Portal](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement)
-   - [KFintech CAS Portal](https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement)
-2. **Select Statement Type**: Choose **Summary CAS** (Consolidated Account Summary).
-3. **Enter Details**: Provide your registered Email ID, PAN, and date range.
-4. **Download & Extract**: Check your email for the password-protected PDF statement, then drag & drop it into the Web App or pass it to `cam_extractor.py -p YOUR_PAN`.
-
-### 1. Launch Web Application
+## 🚀 Quick Start
 
 ```bash
-# Start the web server (default port: 5050)
+# Start the web dashboard (http://localhost:5050)
 python server.py 5050
+
+# Or run CLI extraction directly on a PDF or image folder
+python cam_extractor.py statement.pdf -p YOUR_PAN -o output/cam_holdings.csv
 ```
 
-Open your browser and navigate to: **`http://localhost:5050`**
+## 📥 How to Download your CAS PDF
 
-### 2. Command-Line Extraction (CLI)
+1. Visit [CAMS CAS Portal](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement) or [KFintech CAS Portal](https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement).
+2. Request a **Summary CAS** statement to your registered email.
+3. Drag & drop the PDF into the Web App (enter your PAN or DOB password when prompted).
 
-```bash
-# Run extractor directly on input directory (outputs to output/cam_holdings.csv)
-python cam_extractor.py data/
-```
+## ✨ Key Features
 
-### 3. Python API / Standalone Cleaning
-
-```python
-from cam_extractor import clean_and_categorize_scheme
-
-raw_scheme = "OINF769KO1DM9 117TSD1G - Mirae Asset ELSS Tax Saver Fund (formerly Mirae Asset Tax Saver Fund ) - Direct Plan (Non Demat)"
-res = clean_and_categorize_scheme(raw_scheme)
-
-print(res)
-# Output:
-# {
-#     'ISIN': 'INF769K01DM9',
-#     'Scheme Code': '117TSD1G',
-#     'Clean Scheme Name': 'Mirae Asset ELSS Tax Saver Fund',
-#     'Category': 'Equity: ELSS (Tax Saver)',
-#     'Plan': 'Direct',
-#     'Option': 'Growth'
-# }
-```
+- **PDF & Image Parsing**: Extracts password-protected CAMS / KFintech CAS PDFs and image screenshots.
+- **Automatic Categorization**: Classifies schemes into Equity (Small, Mid, Flexi, ELSS, Index), Hybrid, Commodities (Gold/Silver), and AMC Fund Houses.
+- **Target Goal Tracker**: Set target allocation percentages and track portfolio rebalancing.
+- **Export & Analytics**: Real-time valuation metrics, allocation charts, and 1-click CSV export.
