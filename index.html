@@ -34,6 +34,9 @@
             <span>🎯 Target Goal Tracker</span>
           </button>
         </nav>
+        <button class="btn" onclick="clearAllData()" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); padding: 0.5rem 0.9rem; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.35)'" onmouseout="this.style.background='rgba(239, 68, 68, 0.15)'" title="Delete output CSV and clear portfolio data">
+          <span>🗑️ Clear Data</span>
+        </button>
         <div class="status-badge">
           <span class="status-dot"></span>
           <span>OCR Pipeline Ready</span>
@@ -45,13 +48,14 @@
     <section class="upload-section">
       <div class="glass-card">
         <div class="drop-zone" id="dropZone">
-          <div class="upload-icon">📸</div>
-          <h3 class="upload-title">Drop your CAM Statement images here</h3>
-          <p class="upload-desc">Supports PNG, JPG, JPEG, WEBP files. Upload single or multiple page screenshots.</p>
+          <div class="upload-icon">📄</div>
+          <h3 class="upload-title">Drop your CAM Statement images or PDF files here</h3>
+          <p class="upload-desc">Supports PNG, JPG, JPEG, WEBP, and PDF files (scanned or protected PDF statements).</p>
+
           <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
-            <span>Browse Image Files</span>
+            <span>Browse Files (Images / PDF)</span>
           </button>
-          <input type="file" id="fileInput" class="file-input" multiple accept="image/*">
+          <input type="file" id="fileInput" class="file-input" multiple accept="image/*,.pdf,application/pdf">
         </div>
 
         <div class="file-previews" id="filePreviews"></div>
@@ -121,6 +125,9 @@
             <a id="downloadBtn" href="/output/cam_holdings.csv" class="btn btn-success" download>
               <span>📥 Export CSV Report</span>
             </a>
+            <button class="btn" onclick="clearAllData()" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.6rem 1rem; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.4)'" onmouseout="this.style.background='rgba(239, 68, 68, 0.2)'">
+              <span>🗑️ Clear All Data</span>
+            </button>
           </div>
         </div>
 
@@ -345,6 +352,40 @@
           <button class="btn btn-secondary" onclick="closeGoalsModal()">Cancel</button>
           <button class="btn btn-primary" onclick="saveGoalsFromModal()">💾 Save to target_goals.json</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PDF PASSWORD MODAL ==================== -->
+  <div id="pdfPasswordModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content glass-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h2 style="font-family: var(--font-heading); font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+          <span>🔒 PDF Password Required</span>
+        </h2>
+        <span class="modal-close" onclick="closePdfPasswordModal()">✕</span>
+      </div>
+      <p style="font-size: 0.88rem; color: var(--text-muted); margin: 0.75rem 0 1rem 0; line-height: 1.4;">
+        Your PDF statement is encrypted. Please enter your password to unlock and process the statement.
+      </p>
+
+      <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.75rem; font-size: 0.82rem; color: #7dd3fc; margin-bottom: 1.25rem;">
+        💡 <strong>Common Password Formats:</strong>
+        <ul style="margin: 0.4rem 0 0 1.2rem; padding: 0; line-height: 1.5;">
+          <li><strong>CAMS / KFintech CAS:</strong> Your PAN in UPPERCASE (e.g. <code>ABCDE1234F</code>)</li>
+          <li><strong>Alternative CAS:</strong> Your Date of Birth in <code>DDMMYYYY</code> format</li>
+        </ul>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem;">
+        <label for="modalPdfPassword" style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">PDF Password:</label>
+        <input type="password" id="modalPdfPassword" class="search-input" style="width: 100%; box-sizing: border-box; padding: 0.7rem 0.9rem; font-size: 0.95rem;" placeholder="Enter PAN or DOB..." onkeydown="if(event.key==='Enter') submitPdfPasswordFromModal()">
+        <span id="modalPdfPasswordError" style="font-size: 0.8rem; color: #f87171; display: none;">❌ Invalid password. Please check your PAN / DOB and try again.</span>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; border-top: 1px solid var(--border-glass); padding-top: 1rem;">
+        <button class="btn btn-secondary" onclick="closePdfPasswordModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitPdfPasswordFromModal()">🔓 Unlock & Extract</button>
       </div>
     </div>
   </div>

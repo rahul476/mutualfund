@@ -21,8 +21,13 @@ import numpy as np
 import pandas as pd
 import pytesseract
 from PIL import Image
+import pypdfium2
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".pdf"}
+
+class PDFPasswordRequiredError(Exception):
+    """Raised when a PDF is password-protected and no password or an incorrect password was supplied."""
+    pass
 
 OUTPUT_COLUMNS = [
     "Folio No.",
@@ -426,6 +431,42 @@ def extract_from_image(image_input) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+def extract_from_pdf(pdf_input, password: str = None) -> list:
+    """
+    Extract DataFrames from a PDF document (file path or in-memory bytes) by rendering
+    each page to high-DPI image and feeding into OCR extraction pipeline.
+    """
+    try:
+        if isinstance(pdf_input, (str, Path)):
+            pdf = pypdfium2.PdfDocument(str(pdf_input), password=password)
+        else:
+            pdf = pypdfium2.PdfDocument(pdf_input, password=password)
+    except Exception as e:
+        err_str = str(e).lower()
+        if any(term in err_str for term in ["password", "locked", "encrypted", "unauthorized", "pdfiumerror", "wrong"]):
+            raise PDFPasswordRequiredError("PDF is password-protected or invalid password supplied.")
+        raise e
+
+    page_dfs = []
+    num_pages = len(pdf)
+    for page_idx, page in enumerate(pdf, 1):
+        print(f"   📄 Rendering & processing PDF page {page_idx}/{num_pages}...")
+        pil_img = page.render(scale=3.0).to_pil()
+        img_np = np.array(pil_img)
+
+        if len(img_np.shape) == 3:
+            if img_np.shape[2] == 4:
+                img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2BGR)
+            elif img_np.shape[2] == 3:
+                img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+        df = extract_from_image(img_np)
+        if not df.empty:
+            page_dfs.append(df)
+
+    return page_dfs
+
+
 def find_images(paths: list) -> list:
     image_files = []
     for p in paths:
@@ -440,27 +481,48 @@ def find_images(paths: list) -> list:
     return [str(f) for f in sorted(set(image_files))]
 
 
-def extract_all(image_inputs: list) -> pd.DataFrame:
+def extract_all(inputs: list, password: str = None) -> pd.DataFrame:
     """
-    Extract holdings from a list of image inputs.
-    Each item in image_inputs can be a file path string OR a tuple (filename, bytes).
+    Extract holdings from a list of image/PDF inputs.
+    Each item in inputs can be a file path string OR a tuple (filename, bytes).
     """
     all_dfs = []
 
-    for idx, item in enumerate(image_inputs, 1):
+    for idx, item in enumerate(inputs, 1):
         if isinstance(item, tuple):
-            name, img_bytes = item
-            print(f"\n📄 [{idx}/{len(image_inputs)}] Processing in-memory image: {name}")
-            df = extract_from_image(img_bytes)
+            name, content_bytes = item
+            print(f"\n📄 [{idx}/{len(inputs)}] Processing in-memory item: {name}")
+            is_pdf = name.lower().endswith(".pdf") or content_bytes.startswith(b"%PDF")
+            
+            if is_pdf:
+                page_dfs = extract_from_pdf(content_bytes, password=password)
+                for page_df in page_dfs:
+                    if not page_df.empty:
+                        page_df["Source File"] = name
+                        all_dfs.append(page_df)
+            else:
+                df = extract_from_image(content_bytes)
+                if not df.empty:
+                    df["Source File"] = name
+                    all_dfs.append(df)
             source_name = name
         else:
-            print(f"\n📄 [{idx}/{len(image_inputs)}] Processing file: {Path(item).name}")
-            df = extract_from_image(item)
-            source_name = Path(item).name
-
-        if not df.empty:
-            df["Source File"] = source_name
-            all_dfs.append(df)
+            filepath = str(item)
+            name = Path(filepath).name
+            print(f"\n📄 [{idx}/{len(inputs)}] Processing file: {name}")
+            is_pdf = filepath.lower().endswith(".pdf")
+            
+            if is_pdf:
+                page_dfs = extract_from_pdf(filepath, password=password)
+                for page_df in page_dfs:
+                    if not page_df.empty:
+                        page_df["Source File"] = name
+                        all_dfs.append(page_df)
+            else:
+                df = extract_from_image(filepath)
+                if not df.empty:
+                    df["Source File"] = name
+                    all_dfs.append(df)
 
     if not all_dfs:
         return pd.DataFrame(columns=OUTPUT_COLUMNS + ["Source File"])
@@ -523,7 +585,25 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     if "Scheme Name" in df.columns:
         df = df[df["Scheme Name"].str.len() > 3].reset_index(drop=True)
-        df = df[~df["Scheme Name"].str.lower().isin(["total", "sub total", "grand total", "sub-total"])].reset_index(drop=True)
+        
+        # Filter out rows where scheme name is too long or contains disclaimer / intro text
+        disclaimer_keywords = [
+            "consolidated account summary", "investor friendly initiative",
+            "brought to you as an investor", "email id:", "mobile:",
+            "registered your email", "demat holdings", "if you find any folios",
+            "if you have not entered a pan", "account summary will consolidate",
+            "cams and kfintech", "check with your dp", "total", "sub total",
+            "grand total", "sub-total", "india if you find", "bidan"
+        ]
+        pattern = "|".join([re.escape(k) for k in disclaimer_keywords])
+        df = df[~df["Scheme Name"].str.lower().str.contains(pattern, regex=True)].reset_index(drop=True)
+        df = df[df["Scheme Name"].str.len() < 180].reset_index(drop=True)
+
+    # Require at least one valid numeric metric (Market Value, Cost, or Units)
+    num_cols_present = [c for c in ["Market Value (INR)", "Cost Value (INR)", "Unit Balance"] if c in df.columns]
+    if num_cols_present:
+        num_mask = df[num_cols_present].notna().any(axis=1)
+        df = df[num_mask].reset_index(drop=True)
 
     cols_to_use = [c for c in OUTPUT_COLUMNS if c in df.columns]
     if "Source File" in df.columns:
@@ -543,19 +623,24 @@ def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract mutual-fund holdings from CAM statement image(s).")
-    parser.add_argument("inputs", nargs="+", help="Image file(s) or folder(s)")
+    parser = argparse.ArgumentParser(description="Extract mutual-fund holdings from CAM statement image(s) or PDF(s).")
+    parser.add_argument("inputs", nargs="+", help="Image/PDF file(s) or folder(s)")
     parser.add_argument("-o", "--output", default="output/cam_holdings.csv", help="Output CSV path (default: output/cam_holdings.csv)")
+    parser.add_argument("-p", "--password", default=None, help="Password for protected PDF file(s)")
     args = parser.parse_args()
 
     image_paths = find_images(args.inputs)
     if not image_paths:
-        print("❌ No image files found.")
+        print("❌ No valid image or PDF files found.")
         sys.exit(1)
 
-    print(f"🔎 Found {len(image_paths)} image(s) to process:")
+    print(f"🔎 Found {len(image_paths)} file(s) to process:")
 
-    df = extract_all(image_paths)
+    try:
+        df = extract_all(image_paths, password=args.password)
+    except PDFPasswordRequiredError as err:
+        print(f"\n🔒 {err}")
+        sys.exit(1)
     df = clean_dataframe(df)
     df = deduplicate(df)
 

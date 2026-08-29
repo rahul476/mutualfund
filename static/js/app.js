@@ -228,13 +228,13 @@ async function saveGoalsFromModal() {
 
 // Handle File Selection
 function handleFiles(files) {
-  const imageFiles = files.filter(f => f.type.startsWith('image/'));
-  if (imageFiles.length === 0) {
-    alert('Please upload valid image files (PNG, JPG, WEBP).');
+  const validFiles = Array.from(files).filter(f => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf');
+  if (validFiles.length === 0) {
+    alert('Please upload valid image files (PNG, JPG, WEBP) or PDF statements.');
     return;
   }
 
-  uploadedFiles = imageFiles;
+  uploadedFiles = validFiles;
   renderFilePreviews();
   uploadAndProcess();
 }
@@ -243,10 +243,11 @@ function renderFilePreviews() {
   const container = document.getElementById('filePreviews');
   container.innerHTML = '';
   uploadedFiles.forEach((file, index) => {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
     const badge = document.createElement('div');
     badge.className = 'preview-badge';
     badge.innerHTML = `
-      <span>📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>
+      <span>${isPdf ? '📑' : '📄'} ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>
       <span class="remove-file" onclick="removeFile(${index})">✕</span>
     `;
     container.appendChild(badge);
@@ -257,6 +258,8 @@ function removeFile(index) {
   uploadedFiles.splice(index, 1);
   renderFilePreviews();
 }
+
+let currentPdfPassword = '';
 
 // Send Files to API Endpoint /api/extract
 async function uploadAndProcess() {
@@ -270,6 +273,10 @@ async function uploadAndProcess() {
     formData.append('images', file);
   });
 
+  if (currentPdfPassword) {
+    formData.append('password', currentPdfPassword);
+  }
+
   try {
     const response = await fetch('/api/extract', {
       method: 'POST',
@@ -280,17 +287,62 @@ async function uploadAndProcess() {
     spinner.style.display = 'none';
 
     if (result.success) {
+      currentPdfPassword = ''; // Reset password after successful extraction
       if (result.goals && result.goals.length > 0) TARGET_GOALS = result.goals;
       currentHoldings = prepareHoldings(result.holdings);
       updateDashboard(result.summary, currentHoldings);
+    } else if (result.password_required) {
+      openPdfPasswordModal(Boolean(currentPdfPassword));
     } else {
-      alert('Extraction Error: ' + (result.error || 'Failed to process images.'));
+      currentPdfPassword = '';
+      alert('Extraction Error: ' + (result.error || 'Failed to process files.'));
     }
   } catch (err) {
+    currentPdfPassword = '';
     spinner.style.display = 'none';
     console.error(err);
-    alert('Error connecting to backend server.');
+    alert('Server error processing uploaded files.');
   }
+}
+
+// PDF Password Modal Helpers
+function openPdfPasswordModal(isError = false) {
+  const modal = document.getElementById('pdfPasswordModal');
+  const input = document.getElementById('modalPdfPassword');
+  const errSpan = document.getElementById('modalPdfPasswordError');
+
+  if (errSpan) errSpan.style.display = isError ? 'block' : 'none';
+  if (modal) modal.style.display = 'flex';
+  
+  if (input) {
+    input.value = '';
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 50);
+  }
+}
+
+function closePdfPasswordModal(resetPassword = true) {
+  const modal = document.getElementById('pdfPasswordModal');
+  if (modal) modal.style.display = 'none';
+  if (resetPassword) {
+    currentPdfPassword = '';
+  }
+}
+
+function submitPdfPasswordFromModal() {
+  const input = document.getElementById('modalPdfPassword');
+  const val = input ? input.value.trim() : '';
+
+  if (!val) {
+    alert('Please enter your PDF password.');
+    return;
+  }
+
+  currentPdfPassword = val;
+  closePdfPasswordModal(false);
+  uploadAndProcess();
 }
 
 // Fetch Sample Data on First Load
@@ -848,8 +900,8 @@ function renderRegistrarChart(registrars) {
 // Utility Helpers
 function formatCurrency(val) {
   const num = parseFloat(val);
-  if (isNaN(num)) return '0.00';
-  return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (isNaN(num)) return '₹0.00';
+  return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatNumber(val) {
@@ -860,7 +912,56 @@ function formatNumber(val) {
 
 function escapeHtml(str) {
   if (!str) return '';
-  return str.toString().replace(/[&<>"']/g, function(m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-  });
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Clear all data (CSV report and in-memory portfolio state)
+async function clearAllData() {
+  if (!confirm('Are you sure you want to delete the extracted CSV report and clear all portfolio data?')) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/clear', { method: 'POST' });
+    let result = {};
+    try {
+      result = await res.json();
+    } catch (parseErr) {
+      alert('The server has not loaded the new /api/clear feature yet.\n\nPlease stop (Ctrl+C) and restart python server.py in your terminal!');
+      return;
+    }
+    
+    if (res.ok && result.success) {
+      uploadedFiles = [];
+      currentHoldings = [];
+      filteredHoldings = [];
+      excludedGoalHoldingKeys.clear();
+      currentPdfPassword = '';
+      sessionStorage.removeItem('cam_pdf_password');
+      
+      renderFilePreviews();
+      updateDashboard({
+        total_holdings: 0,
+        total_cost: 0,
+        total_market_value: 0,
+        total_gain_loss: 0,
+        total_gain_loss_pct: 0,
+        categories: {},
+        fund_houses: {},
+        registrars: {}
+      }, []);
+
+      alert('All extracted portfolio data and CSV files have been cleared.');
+    } else {
+      alert('Error clearing data: ' + (result.error || 'Failed to clear server data.'));
+    }
+  } catch (e) {
+    console.error(e);
+    alert('Network error connecting to server.');
+  }
 }

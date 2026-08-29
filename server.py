@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 # Import extractor pipeline
-from cam_extractor import extract_all, clean_dataframe, deduplicate, OUTPUT_COLUMNS
+from cam_extractor import extract_all, clean_dataframe, deduplicate, OUTPUT_COLUMNS, PDFPasswordRequiredError
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5050
 OUTPUT_DIR = Path("output").resolve()
@@ -99,10 +99,11 @@ def save_target_goals(goals: list) -> bool:
         return False
 
 
-def parse_multipart_files_in_memory(body: bytes, boundary: bytes) -> list:
-    """Parse multipart/form-data files directly into in-memory bytes tuples (filename, content_bytes)."""
+def parse_multipart_files_in_memory(body: bytes, boundary: bytes) -> tuple:
+    """Parse multipart/form-data into (in_memory_files, form_fields)."""
     parts = body.split(b"--" + boundary)
     in_memory_files = []
+    form_fields = {}
     
     for part in parts:
         if not part or part == b"--\r\n" or part == b"--":
@@ -117,12 +118,17 @@ def parse_multipart_files_in_memory(body: bytes, boundary: bytes) -> list:
         
         header_str = header_bytes.decode("utf-8", errors="ignore")
         fn_match = re.search(r'filename="([^"]+)"', header_str)
+        name_match = re.search(r'name="([^"]+)"', header_str)
+        
         if fn_match and content:
             filename = Path(fn_match.group(1)).name
             if filename:
                 in_memory_files.append((filename, content))
+        elif name_match and not fn_match:
+            field_name = name_match.group(1)
+            form_fields[field_name] = content.decode("utf-8", errors="ignore").strip()
                 
-    return in_memory_files
+    return in_memory_files, form_fields
 
 
 def calculate_analytics(df: pd.DataFrame) -> dict:
@@ -230,6 +236,27 @@ class CAMServerHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
         
+        if parsed_url.path == "/api/clear":
+            try:
+                if OUTPUT_DIR.exists():
+                    for f in OUTPUT_DIR.glob("*"):
+                        if f.is_file():
+                            try:
+                                os.remove(f)
+                            except Exception as fe:
+                                print(f"⚠ Warning removing file {f}: {fe}")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "message": "All CSV data and extracted portfolio state cleared."}).encode("utf-8"))
+            except Exception as e:
+                print(f"❌ Error clearing data: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
         if parsed_url.path == "/api/goals":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
@@ -274,18 +301,19 @@ class CAMServerHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
             
-            in_memory_files = parse_multipart_files_in_memory(body, boundary)
+            in_memory_files, form_fields = parse_multipart_files_in_memory(body, boundary)
             if not in_memory_files:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "error": "No valid image files uploaded"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "No valid image or PDF files uploaded"}).encode("utf-8"))
                 return
                 
-            print(f"🔎 Server processing {len(in_memory_files)} uploaded image(s) completely IN-MEMORY...")
+            pdf_password = form_fields.get("password", None)
+            print(f"🔎 Server processing {len(in_memory_files)} uploaded file(s) completely IN-MEMORY (password provided: {bool(pdf_password)})...")
             
             try:
-                df = extract_all(in_memory_files)
+                df = extract_all(in_memory_files, password=pdf_password)
                 df = clean_dataframe(df)
                 df = deduplicate(df)
                 
@@ -309,6 +337,16 @@ class CAMServerHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(res).encode("utf-8"))
                 
+            except PDFPasswordRequiredError as e:
+                print(f"🔒 PDF Password Required: {e}")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "password_required": True,
+                    "error": "PDF is password-protected. Please enter your password (e.g., PAN or DOB)."
+                }).encode("utf-8"))
             except Exception as e:
                 print(f"❌ Extraction error: {e}")
                 self.send_response(500)
